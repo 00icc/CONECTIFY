@@ -1,6 +1,6 @@
 # CONECTIFY
 
-CONECTIFY is a bridge application that enables seamless integration between Adobe After Effects and DaVinci Resolve, streamlining your video post-production workflow.
+CONECTIFY is a bridge application that enables seamless {not yet}  integration between Adobe After Effects and DaVinci Resolve, streamlining your video post-production workflow.
 
 ## Features
 
