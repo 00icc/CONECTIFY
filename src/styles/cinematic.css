@@ -1,0 +1,195 @@
+/* Cinematic Theme Variables */
+:root {
+  --cinematic-grain-opacity: 0.05;
+  --cinematic-gradient-start: rgba(18, 18, 18, 0.95);
+  --cinematic-gradient-mid: rgba(38, 38, 38, 0.95);
+  --cinematic-gradient-end: rgba(18, 18, 18, 0.95);
+  --cinematic-glass-bg: rgba(255, 255, 255, 0.05);
+  --cinematic-glass-border: rgba(255, 255, 255, 0.1);
+  --cinematic-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  --cinematic-button-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+  --cinematic-button-hover: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.08));
+  --cinematic-button-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  --cinematic-error-bg: linear-gradient(135deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));
+  --cinematic-error-border: rgba(220, 53, 69, 0.2);
+  --cinematic-error-shadow: 0 8px 32px rgba(220, 53, 69, 0.15);
+  --cinematic-loading-overlay: rgba(0, 0, 0, 0.5);
+  --cinematic-loading-blur: 8px;
+}
+
+/* Cinematic UI Effects */
+.cinematic-grain {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: var(--cinematic-grain-opacity);
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iLjc1IiBzdGl0Y2hUaWxlcz0ic3RpdGNoIi8+PC9maWx0ZXI+PHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSIzMDAiIGZpbHRlcj0idXJsKCNhKSIgb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==');
+  animation: grain 8s steps(10) infinite;
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  -moz-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+@keyframes grain {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-5%, -5%); }
+  20% { transform: translate(-10%, 5%); }
+  30% { transform: translate(5%, -10%); }
+  40% { transform: translate(-5%, 15%); }
+  50% { transform: translate(-10%, 5%); }
+  60% { transform: translate(15%, 0); }
+  70% { transform: translate(0, 10%); }
+  80% { transform: translate(-15%, 0); }
+  90% { transform: translate(10%, 5%); }
+}
+
+/* Cinematic Gradients */
+.cinematic-bg {
+  background: linear-gradient(135deg, 
+    var(--cinematic-gradient-start) 0%,
+    var(--cinematic-gradient-mid) 50%,
+    var(--cinematic-gradient-end) 100%);
+  background-size: 400% 400%;
+  animation: gradient 15s ease infinite;
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Glass Morphism Enhancement */
+.glass-panel {
+  background: var(--cinematic-glass-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--cinematic-glass-border);
+  box-shadow: var(--cinematic-glass-shadow);
+  border-radius: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateZ(0);
+  will-change: transform, opacity;
+}
+
+.glass-panel:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* Cinematic Button Styles */
+.cinematic-button {
+  background: var(--cinematic-button-bg);
+  border: 1px solid var(--cinematic-glass-border);
+  padding: 12px 32px;
+  border-radius: 12px;
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+}
+
+.cinematic-button:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.08));
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.cinematic-button:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Cinematic Error Styles */
+.cinematic-error {
+  background: var(--cinematic-error-bg);
+  border: 1px solid var(--cinematic-error-border);
+  box-shadow: var(--cinematic-error-shadow);
+  backdrop-filter: blur(var(--backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--backdrop-blur));
+  animation: errorPulse 2s infinite;
+}
+
+@keyframes errorPulse {
+  0% { box-shadow: var(--cinematic-error-shadow); }
+  50% { box-shadow: var(--cinematic-error-shadow), 0 0 20px rgba(220, 53, 69, 0.3); }
+  100% { box-shadow: var(--cinematic-error-shadow); }
+}
+
+/* Cinematic Loading Styles */
+.cinematic-loading {
+  position: relative;
+}
+
+.cinematic-loading::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--cinematic-loading-overlay);
+  backdrop-filter: blur(var(--cinematic-loading-blur));
+  -webkit-backdrop-filter: blur(var(--cinematic-loading-blur));
+  border-radius: inherit;
+  z-index: 1;
+}
+
+.cinematic-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: cinematic-spin 1s linear infinite;
+  z-index: 2;
+}
+
+@keyframes cinematic-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Cinematic Button States */
+.cinematic-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.cinematic-button.loading {
+  position: relative;
+  padding-right: 48px;
+}
+
+.cinematic-button.loading::after {
+  content: '';
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: cinematic-spin 0.8s linear infinite;
+}

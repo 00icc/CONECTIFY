@@ -1,402 +1,217 @@
--- CONECTIFY Bridge Script for DaVinci Resolve
+-- CONECTIFY Bridge for DaVinci Resolve
+-- Enables communication between Resolve and CONECTIFY application
 
--- Global state management
-local BridgeState = {
-    connected = false,
-    resolve = nil,
-    fusion = nil,
-    project = nil,
-    lastError = nil,
-    maxRetries = 3,
-    retryDelay = 1,
-    lastHealthCheck = 0,
-    healthCheckInterval = 30,
-    connectionTimeout = 10
-}
+local resolve = Resolve()
+local projectManager = resolve:GetProjectManager()
+local project = projectManager:GetCurrentProject()
+local timeline = project:GetCurrentTimeline()
+local mediaPool = project:GetMediaPool()
 
--- Error handling wrapper with detailed logging
-function SafeExecute(fn)
-    local success, result = pcall(fn)
-    if not success then
-        BridgeState.lastError = result
-        BridgeState.connected = false
-        return { success = false, error = result, timestamp = os.time() }
-    end
-    return { success = true, data = result, timestamp = os.time() }
+-- Utility functions for data validation
+local function validateNumber(value, default)
+    return type(value) == "number" and value or default
 end
 
--- Enhanced retry operation with timeout
-function RetryOperation(operation)
-    local lastError
-    local startTime = os.time()
-    
-    for attempt = 1, BridgeState.maxRetries do
-        if os.time() - startTime > BridgeState.connectionTimeout then
-            error("Operation timed out")
-        end
-        
-        local result = SafeExecute(operation)
-        if result.success then
-            return result.data
-        end
-        
-        lastError = result.error
-        if attempt < BridgeState.maxRetries then
-            bmd.wait({ seconds = BridgeState.retryDelay, frames = 0 })
-        end
-    end
-    error(lastError)
+local function validateString(value, default)
+    return type(value) == "string" and value or default
 end
 
--- Health check function
-function CheckHealth()
-    if os.time() - BridgeState.lastHealthCheck < BridgeState.healthCheckInterval then
-        return BridgeState.connected
-    end
-    
-    local result = SafeExecute(function()
-        if not BridgeState.resolve or not BridgeState.project then
-            return false
-        end
-        local projectManager = BridgeState.resolve:GetProjectManager()
-        return projectManager ~= nil
-    end)
-    
-    BridgeState.lastHealthCheck = os.time()
-    BridgeState.connected = result.success
-    return result.success
+local function validateBoolean(value, default)
+    return type(value) == "boolean" and value or default
 end
 
--- Enhanced connection management
-function Connect()
-    if BridgeState.connected and CheckHealth() then
-        return true
+-- Error handling wrapper
+local function try_catch(fn)
+    local status, result = pcall(fn)
+    if status then
+        return { success = true, data = result }
+    else
+        return { success = false, error = result }
     end
-    
-    return RetryOperation(function()
-        BridgeState.resolve = GetResolve()
-        if not BridgeState.resolve then
-            error("Failed to connect to DaVinci Resolve")
+end
+
+-- Get timeline data with enhanced error handling
+function GetTimelineData()
+    return try_catch(function()
+        if not timeline then
+            error("No timeline is open. Please open a timeline to continue.")
         end
-        
-        BridgeState.project = BridgeState.resolve:GetProjectManager():GetCurrentProject()
-        if not BridgeState.project then
-            error("No active project found")
+
+        local data = {
+            name = validateString(timeline:GetName(), "Untitled"),
+            frameCount = validateNumber(timeline:GetTrackCount("video"), 0),
+            fps = validateNumber(timeline:GetSetting("frameRate"), 24),
+            resolution = {
+                width = validateNumber(timeline:GetSetting("timelineResolutionWidth"), 1920),
+                height = validateNumber(timeline:GetSetting("timelineResolutionHeight"), 1080)
+            },
+            tracks = {},
+            markers = GetTimelineMarkers(),
+            version = "1.0.0"
+        }
+
+        -- Get video tracks data
+        for i = 1, timeline:GetTrackCount("video") do
+            local trackResult = try_catch(function()
+                return GetTrackData(i)
+            end)
+            
+            if trackResult.success then
+                table.insert(data.tracks, trackResult.data)
+            end
         end
-        
-        BridgeState.fusion = BridgeState.resolve:Fusion()
-        if not BridgeState.fusion then
-            error("Failed to initialize Fusion")
-        end
-        
-        BridgeState.connected = true
-        return true
+
+        return data
     end)
 end
 
--- Graceful disconnect
-function Disconnect()
-    BridgeState.connected = false
-    BridgeState.resolve = nil
-    BridgeState.fusion = nil
-    BridgeState.project = nil
-    BridgeState.lastError = nil
+-- Get track data
+function GetTrackData(index)
+    local track = {
+        index = index,
+        type = "video",
+        enabled = validateBoolean(timeline:GetIsTrackEnabled("video", index), true),
+        locked = validateBoolean(timeline:GetIsTrackLocked("video", index), false),
+        items = {}
+    }
+
+    local items = timeline:GetItemListInTrack("video", index)
+    if items then
+        for _, item in ipairs(items) do
+            local itemResult = try_catch(function()
+                return GetClipData(item)
+            end)
+            
+            if itemResult.success then
+                table.insert(track.items, itemResult.data)
+            end
+        end
+    end
+
+    return track
 end
 
--- Get connection status
-function GetStatus()
+-- Get clip data
+function GetClipData(item)
+    if not item then error("Invalid clip item") end
+    
+    local mediaPoolItem = item:GetMediaPoolItem()
     return {
-        connected = BridgeState.connected,
-        lastError = BridgeState.lastError,
-        lastHealthCheck = BridgeState.lastHealthCheck,
-        timestamp = os.time()
+        id = validateString(item:GetUniqueId(), ""),
+        name = validateString(item:GetName(), "Untitled Clip"),
+        start = validateNumber(item:GetStart(), 0),
+        endFrame = validateNumber(item:GetEnd(), 0),
+        duration = validateNumber(item:GetDuration(), 0),
+        mediaPoolItem = mediaPoolItem and mediaPoolItem:GetName() or nil,
+        properties = GetClipProperties(item)
     }
 end
 
-function GetResolve()
-    local resolveInstances = {
-        "/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so",
-        "/Applications/DaVinci Resolve Studio/DaVinci Resolve Studio.app/Contents/Libraries/Fusion/fusionscript.so"
-    }
+-- Get timeline markers
+function GetTimelineMarkers()
+    return try_catch(function()
+        local markers = {}
+        local timelineMarkers = timeline:GetMarkers()
+        
+        if timelineMarkers then
+            for frameId, markerInfo in pairs(timelineMarkers) do
+                table.insert(markers, {
+                    frameId = validateNumber(frameId, 0),
+                    name = validateString(markerInfo.name, ""),
+                    color = validateString(markerInfo.color, "Blue"),
+                    duration = validateNumber(markerInfo.duration, 0),
+                    note = validateString(markerInfo.note, "")
+                })
+            end
+        end
+        
+        return markers
+    end)
+end
+
+-- Get clip properties
+function GetClipProperties(item)
+    return try_catch(function()
+        if not item then error("Invalid clip item") end
+        
+        return {
+            transform = {
+                position = { x = 0, y = 0 },
+                scale = { x = 1, y = 1 },
+                rotation = 0,
+                opacity = 100
+            },
+            effects = {},
+            attributes = {
+                flipHorizontal = false,
+                flipVertical = false,
+                mute = false
+            }
+        }
+    end)
+end
+
+-- Export timeline data
+function ExportTimelineData()
+    local data = GetTimelineData()
+    if data.success then
+        return data.data
+    else
+        return { error = data.error }
+    end
+end
+
+-- Import timeline changes with enhanced error handling
+function ImportTimelineChanges(changesPath)
+    if not timeline then
+        return { success = false, error = "No timeline is open" }
+    end
+
+    local file = io.open(changesPath, "r")
+    if not file then
+        return { success = false, error = "Cannot read changes file: " .. changesPath }
+    end
+
+    local success, changes = pcall(function()
+        return JSON:decode(file:read("*all"))
+    end)
+    file:close()
+
+    if not success or not changes then
+        return { success = false, error = "Invalid JSON data in changes file" }
+    end
+
+    -- Apply changes to timeline with error handling
+    timeline:BeginUndo("Apply CONECTIFY Changes")
+    local results = { success = true, applied = 0, failed = 0, errors = {} }
     
-    return RetryOperation(function()
-        for _, path in ipairs(resolveInstances) do
-            if bmd.fileexists(path) then
-                local resolve = bmd.scriptapp("Resolve")
-                if resolve then
-                    return resolve
+    for _, change in ipairs(changes) do
+        local success, error = pcall(function()
+            local item = timeline:FindItemById(change.itemId)
+            if not item then
+                error("Item not found: " .. change.itemId)
+            end
+
+            if change.type == "move" then
+                item:SetStart(validateNumber(change.newStart, item:GetStart()))
+            elseif change.type == "trim" then
+                item:SetProperty("trimIn", validateNumber(change.trimIn, 0))
+                item:SetProperty("trimOut", validateNumber(change.trimOut, 0))
+            elseif change.type == "transform" then
+                for prop, value in pairs(change.properties) do
+                    item:SetProperty(prop, validateNumber(value, 0))
                 end
             end
-        end
-        error("Could not connect to DaVinci Resolve")
-    end)
-end
+        end)
 
-function InitializeBridge()
-    return RetryOperation(function()
-        local resolve = GetResolve()
-        if not resolve then
-            error("Could not connect to DaVinci Resolve")
-        end
-        
-        local fusion = resolve:Fusion()
-        if not fusion then
-            error("Could not access Fusion page")
-        end
-        
-        BridgeState.connected = true
-        BridgeState.resolve = resolve
-        BridgeState.fusion = fusion
-        return resolve, fusion
-    end)
-end
-
-function CreateNode(fusion, nodeType, settings)
-    return RetryOperation(function()
-        local comp = fusion:GetCurrentComp()
-        if not comp then
-            error("No composition is active")
-        end
-        
-        local node = comp:AddTool(nodeType)
-        if settings then
-            for key, value in pairs(settings) do
-                node:SetInput(key, value)
-            end
-        end
-        
-        return node
-    end)
-end
-
-function CreateNode(nodeType, settings)
-    if not BridgeState.connected then
-        return { success = false, error = "Bridge not initialized" }
-    end
-    
-    return SafeExecute(function()
-        local comp = BridgeState.fusion:GetCurrentComp()
-        if not comp then
-            error("No composition is active")
-        end
-        
-        local node = comp:AddTool(nodeType)
-        if not node then
-            error(string.format("Failed to create node of type '%s'", nodeType))
-        end
-    
-    if settings then
-        for key, value in pairs(settings) do
-            local setSuccess, err = pcall(function()
-                node:SetInput(key, value)
-            end)
-            if not setSuccess then
-                error(string.format("Failed to set input '%s' on node: %s", key, err))
-                return nil
-            end
+        if success then
+            results.applied = results.applied + 1
+        else
+            results.failed = results.failed + 1
+            table.insert(results.errors, error)
         end
     end
-    
-    return node
-end
 
-function ConnectNodes(sourceNode, destNode, sourceOutput, destInput)
-    if not BridgeState.connected then
-        return { success = false, error = "Bridge not initialized" }
-    end
-    
-    return SafeExecute(function()
-        if not sourceNode or not destNode then
-            error("Invalid source or destination node")
-        end
-        
-        local sourcePort = sourceNode:FindMainOutput(sourceOutput or 1)
-        if not sourcePort then
-            error("Source output not found")
-        end
-        
-        local success = destNode:ConnectInput(destInput or 'Input', sourcePort)
-        if not success then
-            error("Failed to connect nodes")
-        end
-        
-        return true
-end
-
-function GetNodeInputs(node)
-    if not node then
-        error("Invalid node")
-        return nil
-    end
-    
-    local success, inputs = pcall(function()
-        return node:GetInputList()
-    end)
-    
-    if not success then
-        error(string.format("Failed to get node inputs: %s", inputs))
-        return nil
-    end
-    
-    return inputs
-end
-
-function ProcessAEData(data)
-    local resolve, fusion = InitializeBridge()
-    if not resolve then return false end
-    
-    local comp = fusion:GetCurrentComp()
-    if not comp then return false end
-    
-    -- Process incoming After Effects data
-    for _, item in ipairs(data) do
-        if item.type == "transform" then
-            local transform = CreateNode(fusion, "Transform", {
-                Center = {item.position[1], item.position[2]},
-                Size = item.scale,
-                Angle = item.rotation
-            })
-        elseif item.type == "text" then
-            local text = CreateNode(fusion, "Text+", {
-                StyledText = item.content,
-                Size = item.fontSize,
-                Font = item.fontName
-            })
-        end
-    end
-    
-    return true
-end
-
-function ExportComposition()
-    local resolve, fusion = InitializeBridge()
-    if not resolve then return nil end
-    
-    local comp = fusion:GetCurrentComp()
-    if not comp then return nil end
-    
-    local data = {
-        nodes = {},
-        connections = {}
-    }
-    
-    -- Export composition data
-    local tools = comp:GetToolList()
-    for _, tool in pairs(tools) do
-        local nodeData = {
-            name = tool:GetAttrs().TOOLS_Name,
-            type = tool:GetAttrs().TOOLS_RegID,
-            inputs = {}
-        }
-        
-        -- Get input values
-        local inputs = tool:GetInputList()
-        for _, input in pairs(inputs) do
-            nodeData.inputs[input] = tool:GetInput(input)
-        end
-        
-        table.insert(data.nodes, nodeData)
-    end
-    
-    return data
-end
-
--- Event handlers for bridge communication
-function OnDataReceived(data)
-    if type(data) ~= "table" then
-        error("Invalid data format received")
-        return false
-    end
-    
-    return ProcessAEData(data)
-end
-
-function OnExportRequest()
-    local data = ExportComposition()
-    if not data then
-        error("Failed to export composition data")
-        return nil
-    end
-    
-    return data
-end
-
-function ProcessAEData(data)
-    local resolve, fusion = InitializeBridge()
-    if not resolve then return false end
-    
-    local comp = fusion:GetCurrentComp()
-    if not comp then return false end
-    
-    -- Process incoming After Effects data
-    for _, item in ipairs(data) do
-        if item.type == "transform" then
-            local transform = CreateNode(fusion, "Transform", {
-                Center = {item.position[1], item.position[2]},
-                Size = item.scale,
-                Angle = item.rotation
-            })
-        elseif item.type == "text" then
-            local text = CreateNode(fusion, "Text+", {
-                StyledText = item.content,
-                Size = item.fontSize,
-                Font = item.fontName
-            })
-        end
-    end
-    
-    return true
-end
-
-function ExportComposition()
-    local resolve, fusion = InitializeBridge()
-    if not resolve then return nil end
-    
-    local comp = fusion:GetCurrentComp()
-    if not comp then return nil end
-    
-    local data = {
-        nodes = {},
-        connections = {}
-    }
-    
-    -- Export composition data
-    local tools = comp:GetToolList()
-    for _, tool in pairs(tools) do
-        local nodeData = {
-            name = tool:GetAttrs().TOOLS_Name,
-            type = tool:GetAttrs().TOOLS_RegID,
-            inputs = {}
-        }
-        
-        -- Get input values
-        local inputs = tool:GetInputList()
-        for _, input in pairs(inputs) do
-            nodeData.inputs[input] = tool:GetInput(input)
-        end
-        
-        table.insert(data.nodes, nodeData)
-    end
-    
-    return data
-end
-
--- Event handlers for bridge communication
-function OnDataReceived(data)
-    if type(data) ~= "table" then
-        error("Invalid data format received")
-        return false
-    end
-    
-    return ProcessAEData(data)
-end
-
-function OnExportRequest()
-    local data = ExportComposition()
-    if not data then
-        error("Failed to export composition data")
-        return nil
-    end
-    
-    return data
+    timeline:EndUndo()
+    return results
 end

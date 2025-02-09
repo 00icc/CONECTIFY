@@ -1,0 +1,28 @@
+[package]
+name = "conectify"
+version = "1.0.0"
+description = "Desktop application for connecting After Effects and DaVinci Resolve"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = [ "shell-sidecar", "shell-execute", "shell-open", "dialog-all", "window-all", "path-all", "fs-all"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+directories = "5.0"
+anyhow = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tokio-tungstenite = "0.20"
+futures-util = "0.3"
+log = "0.4"
+env_logger = "0.10"
+chrono = "0.4"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
